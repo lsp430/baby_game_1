@@ -3,7 +3,7 @@ const { Engine, Render, World, Bodies, Runner, Events, Body, MouseConstraint, Mo
 
 const container = document.getElementById('game-container');
 const MAX_SHAPES = 12;
-const SHAPE_RADIUS = 25; 
+const SHAPE_RADIUS = 30; 
 const COLLISION_CATEGORY_SHAPE = 0x0001;
 const COLLISION_CATEGORY_WALL = 0x0002;
 
