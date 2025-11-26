@@ -172,6 +172,34 @@
                 transform: translate(-50%, -50%) scale(0.6);
             }
         }
+
+        /* ==================== Combo 提示 ==================== */
+        #combo-toast {
+            position: fixed;
+            top: 20%;              /* 可以调整显示位置 */
+            left: 50%;
+            transform: translateX(-50%) scale(0.5);
+            font-size: 80px;
+            font-weight: bold;
+            color: #FF5733;
+            opacity: 0;
+            z-index: 500;
+            pointer-events: none;
+            transition: 
+                opacity 0.3s ease-out,
+                transform 0.3s ease-out;
+        }
+
+        #combo-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) scale(1.1);
+        }
+
+        #combo-toast.fade {
+            opacity: 0;
+            transform: translateX(-50%) scale(0.7);
+        }
+
     </style>
 </head>
 <body>
@@ -184,8 +212,9 @@
         <button id="add-random-btn" class="control-button active">随机生成一个</button>
     </div>
 
-    <div id="game-container">
-        </div>
+    <div id="game-container"></div>
+
+    <div id="combo-toast"></div>
 
     <div id="notification-toast"></div> 
 	

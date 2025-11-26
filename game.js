@@ -40,7 +40,7 @@ let lastCollisionSoundTime = 0; //碰撞音效的节流时间
 let lastSelectedBody = null;         // 上一次点击到的泡泡
 let lastSelectedTime = 0;            // 上一次点击时间戳
 let currentDownBody = null;          // 当前按下时选中的泡泡
-const TAP_COMBINE_INTERVAL = 8000;    // 两次点之间的最大间隔(ms)，比如 8000 毫秒内视为一对
+const TAP_COMBINE_INTERVAL = 5000;    // 两次点之间的最大间隔(ms)，比如 5000 毫秒内视为一对
 let bgmStarted = false;
 let activeParticles = 0;   // 当前在屏幕上的粒子数
 const MAX_PARTICLES = 200; // 同屏粒子上限
@@ -49,6 +49,14 @@ const MAX_PARTICLES = 200; // 同屏粒子上限
 let fireworkCanvas, fireworkCtx;
 const fireworkParticles = [];
 const MAX_FIREWORK_PARTICLES = 400; // 同屏粒子上限，防止卡顿
+
+// 连击：短时间内连续多次融合 → combo 变大
+let lastFusionTime = 0;
+let comboCount = 0;
+const COMBO_RESET_INTERVAL = 10000; // ms 内再次融合算连击
+
+// Combo 提示
+let comboToastTimeout = null;
 
 // ==================== 音效控制函数 ====================
 
@@ -113,26 +121,100 @@ function getRandomContentForNewShape() {
     return currentContentList[getRandom(0, currentContentList.length - 1)];
 }
 
+function showComboToast(comboLevel) {
+    const toast = document.getElementById('combo-toast');
+    if (!toast) return;
+
+    // Combo 文案
+    toast.textContent = `Combo x${comboLevel}!`;
+
+    // 根据 comboLevel 设置颜色（可选）
+    const colors = [
+        '#FF5733', // Combo1
+        '#FF8C00', // Combo2
+        '#FFD000', // Combo3
+        '#32CD32', // Combo4
+        '#4CC9F0', // Combo5
+    ];
+    toast.style.color = colors[Math.min(comboLevel - 1, colors.length - 1)];
+
+    // 先移除所有 class，重置动画
+    toast.classList.remove('show', 'fade');
+    void toast.offsetWidth; // ✨ 强制重绘，让动画能重新触发
+
+    // 显示动画
+    toast.classList.add('show');
+
+    // 如果之前有 fade 计时器，清除掉
+    if (comboToastTimeout) {
+        clearTimeout(comboToastTimeout);
+    }
+
+    // 延迟 500ms 后开始淡出
+    comboToastTimeout = setTimeout(() => {
+        toast.classList.add('fade');
+    }, 500);
+
+    // 再过 700ms 完全消失
+    setTimeout(() => {
+        toast.classList.remove('show', 'fade');
+    }, 1200);
+}
+
+function triggerComboFirework(x, y) {
+    const now = Date.now();
+
+    if (now - lastFusionTime <= COMBO_RESET_INTERVAL) {
+        comboCount++;
+    } else {
+        comboCount = 1;
+    }
+    lastFusionTime = now;
+
+    const comboLevel = Math.min(comboCount, 5);
+
+    // 🎉 显示 Combo 提示
+    if (comboLevel > 1) {
+        showComboToast(comboLevel);
+    }
+
+    createFirework(x, y, comboLevel);
+}
+
+
+
 // 【修正】：createFirework 函数不再接受 color 参数，实现多色烟花
-function createFirework(x, y) { 
-    // 保留原来的音效逻辑
+function createFirework(x, y, comboLevel = 1) { 
+    // 🔊 保留音效
     playSound(soundFirework); 
     playRandomSound(soundXiaohaiList);
     playRandomSound(soundGoodList);
 
-    // 如果粒子太多就只播音效，不再新建，防止卡
+    // 粒子太多就只播音效，避免卡
     if (fireworkParticles.length > MAX_FIREWORK_PARTICLES) {
         return;
     }
 
-    // 中心爆点：可以理解为“烟花炸开的点”
-    const baseX = x;
-    const baseY = y;
+    // ===== 连击强度（1~5），用于放大烟花规模 =====
+    const power = Math.min(Math.max(comboLevel, 1), 5);
 
-    // 两圈粒子：内圈 + 外圈
+    // ===== 1. 大爆炸：两圈主粒子 =====
+    const baseInnerCount = 10;
+    const baseOuterCount = 14;
+
     const rings = [
-        { count: 14, minDist: 25, maxDist: 55 },   // 内圈
-        { count: 18, minDist: 55, maxDist: 110 }   // 外圈
+        {
+            // 内圈，连击越高粒子越多/半径略大
+            count: baseInnerCount + power * 2,
+            minDist: 25,
+            maxDist: 45 + power * 5
+        },
+        {
+            // 外圈，连击越高爆得更开
+            count: baseOuterCount + power * 3,
+            minDist: 45 + power * 5,
+            maxDist: 90 + power * 12
+        }
     ];
 
     rings.forEach((ring) => {
@@ -146,17 +228,20 @@ function createFirework(x, y) {
 
             const distance = getRandom(ring.minDist, ring.maxDist);
 
-            const speed = distance / getRandom(18, 28); // 速度大致和距离挂钩
+            // 根据 power 调整初速度，连击越高爆得越开
+            const speed = distance / getRandom(18 - power, 26 - power); 
             const vx = Math.cos(angle) * speed;
             const vy = Math.sin(angle) * speed;
 
             const color = COLORS[getRandom(0, COLORS.length - 1)];
-            const size = getRandom(3, 5);                 // 半径
-            const maxLife = getRandom(30, 45);            // 帧数（约 0.5~0.75s）
+
+            // 大粒子：连击越高越大一点
+            const size = getRandom(3 + power * 0.3, 5 + power * 0.5);
+            const maxLife = getRandom(32 + power * 3, 45 + power * 4);
 
             fireworkParticles.push({
-                x: baseX,
-                y: baseY,
+                x,
+                y,
                 vx,
                 vy,
                 size,
@@ -166,7 +251,60 @@ function createFirework(x, y) {
             });
         }
     });
+
+    // ===== 2. 小碎星：从爆心向下掉落的闪烁星星 =====
+    const fragmentBaseCount = 6;
+    const fragmentCount = fragmentBaseCount + power * 2;
+
+    for (let i = 0; i < fragmentCount; i++) {
+        if (fireworkParticles.length > MAX_FIREWORK_PARTICLES) break;
+
+        const angleSpread = (Math.random() - 0.5) * (Math.PI / 3); // 上下小角度
+        const speed = getRandom(1, 2) + power * 0.3;
+        const vx = Math.cos(angleSpread) * speed * 0.3;  // X 小，主要向下
+        const vy = Math.sin(angleSpread) * speed + 1.5;  // 往下 + 重力感
+
+        const color = COLORS[getRandom(0, COLORS.length - 1)];
+        const size = getRandom(2, 3);                    // 碎星更小
+        const maxLife = getRandom(35, 55);
+
+        fireworkParticles.push({
+            x,
+            y,
+            vx,
+            vy,
+            size,
+            color,
+            life: 0,
+            maxLife
+        });
+    }
+
+    // ===== 3. 爆心闪光：几颗白色短命亮点 =====
+    const centerCount = 4 + power; // 连击越高，中间亮点多一点
+    for (let i = 0; i < centerCount; i++) {
+        if (fireworkParticles.length > MAX_FIREWORK_PARTICLES) break;
+
+        const jitterX = getRandom(-4, 4);
+        const jitterY = getRandom(-4, 4);
+
+        const color = '#ffffff';
+        const size = 2.5 + power * 0.2;
+        const maxLife = getRandom(12, 20);
+
+        fireworkParticles.push({
+            x: x + jitterX,
+            y: y + jitterY,
+            vx: 0,
+            vy: 0,
+            size,
+            color,
+            life: 0,
+            maxLife
+        });
+    }
 }
+
 // ==================== 提示条控制函数 (保持不变) ====================
 let toastTimeout;
 
@@ -476,7 +614,7 @@ function processFusion(animatedBody, removedBody) {
     }
     
     // 1. 触发烟花效果 (此函数内部会播放音效 3)
-    createFirework(animatedBody.position.x, animatedBody.position.y);
+    triggerComboFirework(animatedBody.position.x, animatedBody.position.y);
     
     // 2. 立即从 DOM 移除消失体
     removedBody.htmlElement.remove();
