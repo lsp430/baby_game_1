@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>💥 宝贝物理点点乐</title>
+    <style>
+        /* ==================== 基础样式 ==================== */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #F0F4F8;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+            z-index: 100; /* 确保按钮在最上层 */
+        }
+        .control-button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+            flex-grow: 1;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .control-button:hover { background-color: #45a049; }
+        .control-button.active { background-color: #FF5733; }
+        #add-random-btn { background-color: #007BFF; }
+
+        /* ==================== 形状样式与果冻效果 ==================== */
+        .shape-html {
+            position: absolute;
+            width: 80px; 
+            height: 80px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px; 
+            font-weight: bold;
+            color: black; 
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            line-height: 1;
+            z-index: 10;
+            pointer-events: none;
+            transform-origin: center center;
+        }
+
+        /* CSS Keyframes for JELLY EFFECT (果冻动画) */
+        @keyframes jelly-bounce {
+            0% { transform: scale(1); }
+            30% { transform: scale(1.3); } /* 快速放大 */
+            60% { transform: scale(0.95); } /* 轻微回弹 */
+            100% { transform: scale(1); } /* 还原 */
+        }
+        
+        /* 应用到元素上的动画类 */
+        .jelly-transform {
+            animation: jelly-bounce 0.5s ease-out forwards;
+        }
+        
+        /* ==================== 提示条样式 ==================== */
+        #notification-toast {
+            position: fixed;
+            bottom: 50px;
+            left: 50%;
+            transform: translate(-50%, 100px); /* 初始位置在屏幕外 */
+            padding: 12px 25px;
+            background-color: #333;
+            color: white;
+            border-radius: 8px;
+            font-weight: bold;
+            z-index: 200; /* 确保在最上层 */
+            opacity: 0;
+            transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+            pointer-events: none;
+        }
+
+        /* 提示条显示时的动画类 */
+        #notification-toast.show {
+            transform: translate(-50%, 0); /* 移入屏幕 */
+            opacity: 1;
+        }
+        
+        /* ==================== Matter.js Canvas 修正 ==================== */
+        #game-container canvas {
+            z-index: 1; /* 确保 Canvas 在底部 */
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* ==================== 烟花粒子 (修正增强版) ==================== */
+		@keyframes firework {
+			0% { opacity: 1; transform: translate(0, 0) scale(1); }
+			/* 【增强】：延长动画时间 */
+			100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(0.1); }
+		}
+		.particle {
+			position: absolute;
+			/* 【增强】：粒子尺寸增大 */
+			width: 8px; 
+			height: 8px;
+			border-radius: 50%;
+			background-color: var(--color);
+			z-index: 100; 
+			/* 【增强】：动画时间延长，匹配 JS 中的 setTimeout */
+			animation: firework 0.8s ease-out forwards; 
+			pointer-events: none;
+		}
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <button id="numbers-btn" class="control-button">数字(1-10)</button>
+        <button id="letters-btn" class="control-button">字母(A-Z)</button>
+        <button id="animals-btn" class="control-button">动物</button>
+        <button id="fruits-btn" class="control-button">水果</button>
+        <button id="add-random-btn" class="control-button active">随机生成一个</button>
+    </div>
+
+    <div id="game-container">
+        </div>
+
+    <div id="notification-toast"></div> 
+	
+	<audio id="sound-tap-1" src="Click_1.mp3" preload="auto"></audio>
+	<audio id="sound-tap-2" src="Click_2.mp3" preload="auto"></audio>
+	<audio id="sound-tap-3" src="Click_3.mp3" preload="auto"></audio>
+	<audio id="sound-tap-4" src="Click_4.mp3" preload="auto"></audio>
+	<audio id="sound-tap-5" src="Click_5.mp3" preload="auto"></audio>
+	<audio id="sound-tap-6" src="Click_6.mp3" preload="auto"></audio>
+	<audio id="sound-chuxian" src="Click_7.mp3" preload="auto"></audio>
+	<audio id="sound-xiaohai-1" src="xiaohai_1.mp3" preload="auto"></audio>
+	<audio id="sound-xiaohai-2" src="xiaohai_2.mp3" preload="auto"></audio>
+	<audio id="sound-xiaohai-3" src="xiaohai_3.mp3" preload="auto"></audio>
+    <audio id="sound-collision" src="penghzunag.mp3" preload="auto"></audio>
+    <audio id="sound-firework" src="yanhua.mp3" preload="auto"></audio>
+	<audio id="sound-type-1" src="type_1.mp3" preload="auto"></audio>
+	<audio id="sound-type-2" src="type_2.mp3" preload="auto"></audio>
+	<audio id="sound-type-3" src="type_3.mp3" preload="auto"></audio>
+	<audio id="sound-type-4" src="type_4.mp3" preload="auto"></audio>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script src="game.js"></script> 
+</body>
+</html>
