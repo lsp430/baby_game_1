@@ -2,8 +2,8 @@
 const { Engine, Render, World, Bodies, Runner, Events, Body, MouseConstraint, Mouse, Vector } = Matter;
 
 const container = document.getElementById('game-container');
-const MAX_SHAPES = 15;
-const SHAPE_RADIUS = 40; 
+const MAX_SHAPES = 12;
+const SHAPE_RADIUS = 25; 
 const COLLISION_CATEGORY_SHAPE = 0x0001;
 const COLLISION_CATEGORY_WALL = 0x0002;
 
@@ -111,8 +111,8 @@ const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + mi
 
 // 👇 新增：根据数量决定内容来源
 function getRandomContentForNewShape() {
-    // 当界面元素超过 10 个时，从已有元素中随机拿一个内容
-    if (gameBodies.length > 10) {
+    // 当界面元素超过 8 个时，从已有元素中随机拿一个内容
+    if (gameBodies.length > 8) {
         const idx = getRandom(0, gameBodies.length - 1);
         return gameBodies[idx].htmlContent;
     }
@@ -572,7 +572,7 @@ function initMatter() {
 			if (isSameContent) {
 
 				if (!bodyA.isProcessing && !bodyB.isProcessing) {
-					showToast(`🎉 ${bodyA.htmlContent} 和 ${bodyB.htmlContent} 发生碰撞！`);
+					// showToast(`🎉 ${bodyA.htmlContent} 和 ${bodyB.htmlContent} 发生碰撞！`);
 					
 					bodyA.isProcessing = true;
 					bodyB.isProcessing = true;
@@ -768,7 +768,7 @@ function handleTapSelection(body) {
         bodyA.isProcessing = true;
         bodyB.isProcessing = true;
 
-        showToast(`👏 连续点中两个 ${body.htmlContent} ！`);
+        // showToast(`👏 连续点中两个 ${body.htmlContent} ！`);
 
         // 规则：让“第二次点击”的泡泡做果冻动画，第一次的消失
         const animatedBody = bodyB;
