@@ -101,24 +101,77 @@
             left: 0;
         }
 
-        /* ==================== 烟花粒子 (修正增强版) ==================== */
-		@keyframes firework {
-			0% { opacity: 1; transform: translate(0, 0) scale(1); }
-			/* 【增强】：延长动画时间 */
-			100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(0.1); }
-		}
-		.particle {
-			position: absolute;
-			/* 【增强】：粒子尺寸增大 */
-			width: 8px; 
-			height: 8px;
-			border-radius: 50%;
-			background-color: var(--color);
-			z-index: 100; 
-			/* 【增强】：动画时间延长，匹配 JS 中的 setTimeout */
-			animation: firework 0.8s ease-out forwards; 
-			pointer-events: none;
-		}
+		/* ==================== 烟花粒子 (增强版) ==================== */
+        @keyframes firework-move {
+            0% {
+                opacity: 0;
+                transform: translate(0, 0) scale(0.4);
+            }
+            10% {
+                opacity: 1;
+                transform: translate(
+                    calc(var(--x) * 0.3),
+                    calc(var(--y) * 0.3)
+                ) scale(1.1);
+            }
+            60% {
+                opacity: 1;
+                transform: translate(
+                    calc(var(--x) * 0.9),
+                    calc(var(--y) * 0.9)
+                ) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(var(--x), var(--y)) scale(0.2);
+            }
+        }
+
+        .particle {
+            position: absolute;
+            width: var(--size, 8px);
+            height: var(--size, 8px);
+            border-radius: 50%;
+            /* 中间略亮的渐变 + 外圈颜色 */
+            /* background: radial-gradient(circle, #fff 0%, var(--color) 40%, rgba(0,0,0,0) 70%);
+            box-shadow: 0 0 10px var(--color); */
+            background: var(--color);
+            box-shadow: 0 0 4px var(--color);
+            z-index: 100;
+            pointer-events: none;
+            animation:
+                firework-move var(--duration, 0.9s) ease-out forwards;
+            animation-delay: var(--delay, 0s);
+        }
+
+        /* 中央闪光圈 */
+        .firework-center {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.4) 40%, rgba(255,255,255,0) 70%);
+            box-shadow: 0 0 25px rgba(255,255,255,0.9);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 99;
+            animation: firework-center 0.45s ease-out forwards;
+        }
+
+        @keyframes firework-center {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.3);
+            }
+            30% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.6);
+            }
+        }
     </style>
 </head>
 <body>
@@ -152,6 +205,9 @@
 	<audio id="sound-type-2" src="type_2.mp3" preload="auto"></audio>
 	<audio id="sound-type-3" src="type_3.mp3" preload="auto"></audio>
 	<audio id="sound-type-4" src="type_4.mp3" preload="auto"></audio>
+    <audio id="bgm-1" src="back_1.mp3" preload="auto"></audio>
+    <audio id="bgm-2" src="back_2.mp3" preload="auto"></audio>
+    <audio id="bgm-3" src="back_3.mp3" preload="auto"></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
     <script src="game.js"></script> 

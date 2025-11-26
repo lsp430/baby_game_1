@@ -2,7 +2,7 @@
 const { Engine, Render, World, Bodies, Runner, Events, Body, MouseConstraint, Mouse, Vector } = Matter;
 
 const container = document.getElementById('game-container');
-const MAX_SHAPES = 20;
+const MAX_SHAPES = 15;
 const SHAPE_RADIUS = 40; 
 const COLLISION_CATEGORY_SHAPE = 0x0001;
 const COLLISION_CATEGORY_WALL = 0x0002;
@@ -30,9 +30,25 @@ const gameBodies = [];
 let soundTapList = [];      // 点击音效池（多个音效）
 let soundXiaohaiList = [];      // xiaohai音效池（多个音效）
 let soundGoodList = [];      // good音效池（多个音效）
+let bgmList = [];
+let currentBgm = null;
 let soundShow, soundCollision, soundFirework;
 let touchStartTime = 0; // 用于判断短触
 let lastCollisionSoundTime = 0; //碰撞音效的节流时间
+
+// 👇 新增：用于“连续点击合成”的状态
+let lastSelectedBody = null;         // 上一次点击到的泡泡
+let lastSelectedTime = 0;            // 上一次点击时间戳
+let currentDownBody = null;          // 当前按下时选中的泡泡
+const TAP_COMBINE_INTERVAL = 8000;    // 两次点之间的最大间隔(ms)，比如 8000 毫秒内视为一对
+let bgmStarted = false;
+let activeParticles = 0;   // 当前在屏幕上的粒子数
+const MAX_PARTICLES = 200; // 同屏粒子上限
+
+// ============ Canvas 烟花相关 ============
+let fireworkCanvas, fireworkCtx;
+const fireworkParticles = [];
+const MAX_FIREWORK_PARTICLES = 400; // 同屏粒子上限，防止卡顿
 
 // ==================== 音效控制函数 ====================
 
@@ -55,6 +71,11 @@ function initSounds() {
         document.getElementById('sound-type-2'),
         document.getElementById('sound-type-3'),
         document.getElementById('sound-type-4')
+    ];
+    bgmList = [
+        document.getElementById('bgm-1'),
+        document.getElementById('bgm-2'),
+        document.getElementById('bgm-3')
     ];
     soundShow = document.getElementById('sound-chuxian');
     soundCollision = document.getElementById('sound-collision');
@@ -80,33 +101,72 @@ function playSound(soundElement) {
 // ==================== 实用函数与烟花 ====================
 const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-// 【修正】：createFirework 函数不再接受 color 参数，实现多色烟花
-function createFirework(x, y) { 
-    // 【增强】：烟花爆炸播放音效 3
-    playSound(soundFirework); 
-	playRandomSound(soundXiaohaiList);
-	playRandomSound(soundGoodList);
-
-    const numParticles = 20; 
-    for (let i = 0; i < numParticles; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        const angle = Math.random() * 2 * Math.PI;
-        const distance = getRandom(50, 150); 
-        
-        // 为每个粒子随机选择颜色
-        const randomColor = COLORS[getRandom(0, COLORS.length - 1)];
-        particle.style.setProperty('--color', randomColor); 
-        
-        particle.style.setProperty('--x', `${Math.cos(angle) * distance}px`);
-        particle.style.setProperty('--y', `${Math.sin(angle) * distance}px`);
-        particle.style.left = `${x}px`;
-        particle.style.top = `${y}px`;
-        container.appendChild(particle);
-        setTimeout(() => particle.remove(), 800); 
+// 👇 新增：根据数量决定内容来源
+function getRandomContentForNewShape() {
+    // 当界面元素超过 10 个时，从已有元素中随机拿一个内容
+    if (gameBodies.length > 10) {
+        const idx = getRandom(0, gameBodies.length - 1);
+        return gameBodies[idx].htmlContent;
     }
+
+    // 否则按原逻辑，从当前类别的内容池中取
+    return currentContentList[getRandom(0, currentContentList.length - 1)];
 }
 
+// 【修正】：createFirework 函数不再接受 color 参数，实现多色烟花
+function createFirework(x, y) { 
+    // 保留原来的音效逻辑
+    playSound(soundFirework); 
+    playRandomSound(soundXiaohaiList);
+    playRandomSound(soundGoodList);
+
+    // 如果粒子太多就只播音效，不再新建，防止卡
+    if (fireworkParticles.length > MAX_FIREWORK_PARTICLES) {
+        return;
+    }
+
+    // 中心爆点：可以理解为“烟花炸开的点”
+    const baseX = x;
+    const baseY = y;
+
+    // 两圈粒子：内圈 + 外圈
+    const rings = [
+        { count: 14, minDist: 25, maxDist: 55 },   // 内圈
+        { count: 18, minDist: 55, maxDist: 110 }   // 外圈
+    ];
+
+    rings.forEach((ring) => {
+        for (let i = 0; i < ring.count; i++) {
+            if (fireworkParticles.length > MAX_FIREWORK_PARTICLES) return;
+
+            const t = i / ring.count;
+            const baseAngle = t * Math.PI * 2;
+            const randomOffset = (Math.random() - 0.5) * (Math.PI / 10);
+            const angle = baseAngle + randomOffset;
+
+            const distance = getRandom(ring.minDist, ring.maxDist);
+
+            const speed = distance / getRandom(18, 28); // 速度大致和距离挂钩
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+
+            const color = COLORS[getRandom(0, COLORS.length - 1)];
+            const size = getRandom(3, 5);                 // 半径
+            const maxLife = getRandom(30, 45);            // 帧数（约 0.5~0.75s）
+
+            fireworkParticles.push({
+                x: baseX,
+                y: baseY,
+                vx,
+                vy,
+                size,
+                color,
+                life: 0,
+                maxLife
+            });
+        }
+    });
+}
 // ==================== 提示条控制函数 (保持不变) ====================
 let toastTimeout;
 
@@ -124,12 +184,92 @@ function showToast(message) {
     }, 3000); 
 }
 
+function updateFireworks() {
+    requestAnimationFrame(updateFireworks);
+    if (!fireworkCtx || !fireworkCanvas) return;
+
+    const w = fireworkCanvas.width;
+    const h = fireworkCanvas.height;
+
+    // ⭐ 没有粒子：直接清空，防止残留
+    if (fireworkParticles.length === 0) {
+        fireworkCtx.clearRect(0, 0, w, h);
+        return;
+    }
+
+    // ⭐ 有粒子：用半透明背景“冲淡”上一帧，形成拖尾
+    // body 背景是 #F0F4F8 = rgb(240,244,248)，保持一致避免颜色块
+    fireworkCtx.fillStyle = 'rgba(240,244,248,0.08)'; // alpha 越小拖尾越淡
+    fireworkCtx.fillRect(0, 0, w, h);
+
+    // 更新 & 绘制粒子
+    for (let i = fireworkParticles.length - 1; i >= 0; i--) {
+        const p = fireworkParticles[i];
+
+        p.life++;
+        if (p.life >= p.maxLife) {
+            fireworkParticles.splice(i, 1);
+            continue;
+        }
+
+        // 速度更新
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.985; // 阻尼
+        p.vy *= 0.985;
+        p.vy += 0.03;  // 轻微重力
+
+        // 透明度随生命衰减
+        const alpha = 1 - p.life / p.maxLife;
+
+        fireworkCtx.globalAlpha = alpha;
+        fireworkCtx.beginPath();
+        fireworkCtx.fillStyle = p.color;
+        fireworkCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        fireworkCtx.fill();
+    }
+
+    fireworkCtx.globalAlpha = 1; // 重置
+}
+
+function initFireworkCanvas() {
+    // 创建一个全屏 Canvas 覆盖在游戏上面
+    fireworkCanvas = document.createElement('canvas');
+    fireworkCanvas.id = 'firework-canvas';
+    fireworkCanvas.style.position = 'fixed';
+    fireworkCanvas.style.left = '0';
+    fireworkCanvas.style.top = '0';
+    fireworkCanvas.style.width = '100%';
+    fireworkCanvas.style.height = '100%';
+    fireworkCanvas.style.pointerEvents = 'none'; // 不挡点击
+    fireworkCanvas.style.zIndex = '8';           // 在 Matter canvas 之上，形状(.shape-html zIndex=10)之下
+
+    document.body.appendChild(fireworkCanvas);
+
+    const resize = () => {
+        fireworkCanvas.width = window.innerWidth;
+        fireworkCanvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    fireworkCtx = fireworkCanvas.getContext('2d');
+
+    // 启动渲染循环
+    requestAnimationFrame(updateFireworks);
+}
 
 // ==================== 核心：Matter.js 初始化 ====================
 
 function initMatter() {
     engine = Engine.create({ gravity: { scale: 0, x: 0, y: 0 } });
     world = engine.world;
+
+    // ⭐ 降低迭代次数，减轻手机压力
+    engine.positionIterations   = 4; // 默认 6
+    engine.velocityIterations   = 3; // 默认 4
+    engine.constraintIterations = 2; // 默认 2，保持不变或也能调成 1
+
     const cw = window.innerWidth;
     const ch = window.innerHeight;
 
@@ -145,7 +285,7 @@ function initMatter() {
     runner = Runner.run(engine);
 
     // 1. 创建边界 (墙壁)
-    const wallThickness = 50; 
+    const wallThickness = 2; 
     const wallVisualOffset = wallThickness / 2;
     
     const wallOptions = { 
@@ -181,46 +321,84 @@ function initMatter() {
     // 【音效修正】：监听鼠标按下和松开事件，实现点击/短触音效 (音效 1)
     Events.on(mouseConstraint, 'mousedown', () => {
         touchStartTime = Date.now();
+        // 记录当前被鼠标选中的物体（可能是 null）
+        currentDownBody = mouseConstraint.body;
     });
 
     Events.on(mouseConstraint, 'mouseup', () => {
         const touchDuration = Date.now() - touchStartTime;
+        const clickedBody = currentDownBody;
+        currentDownBody = null; // 用完清理
+
         // 如果持续时间小于 200ms 且鼠标约束抓住了物体 (即点击了物理体)
         if (touchDuration < 200 ) {
             playRandomSound(soundTapList);
+
+            // 如果确实点在了某个泡泡上，就走“连续点击判定”
+            if (clickedBody && clickedBody.htmlContent) {
+                handleTapSelection(clickedBody);
+            }
         }
     });
 
     
     // 3. 实时同步 & 摩擦减速 (保持不变)
     Events.on(engine, 'beforeUpdate', () => {
-        gameBodies.forEach(body => {
-            const el = body.htmlElement;
-            if (el) {
-                
-                if (body.isAnimating) {
-                    const speed = Vector.magnitude(body.velocity);
-                    if (speed > 0.05) {
-                        Body.setVelocity(body, Vector.mult(body.velocity, 0.98));
-                    } else if (speed > 0) {
-                        Body.setVelocity(body, { x: 0, y: 0 });
-                    }
-                    return; 
-                }
+        const cw = window.innerWidth;
+        const ch = window.innerHeight;
 
-                // 物理定位 
-                el.style.position = 'absolute';
-				el.style.left = `${body.position.x - SHAPE_RADIUS}px`;
-				el.style.top  = `${body.position.y - SHAPE_RADIUS}px`;
-				el.style.transform = `rotate(${body.angle}rad)`;
-                
-                // 摩擦减速
+        // 全部元素统一的边界（圆心范围）
+        const minX = SHAPE_RADIUS;
+        const maxX = cw - SHAPE_RADIUS;
+        const minY = TOP_BOUNDARY_HEIGHT + SHAPE_RADIUS; // 顶部留出按钮区域
+        const maxY = ch - SHAPE_RADIUS;
+
+        gameBodies.forEach(body => {
+            // 1）先做位置夹紧（无论是否在动画或拖动）
+            let { x, y } = body.position;
+
+            if (x < minX) x = minX;
+            if (x > maxX) x = maxX;
+            if (y < minY) y = minY;
+            if (y > maxY) y = maxY;
+
+            if (x !== body.position.x || y !== body.position.y) {
+                Body.setPosition(body, { x, y });
+                // 被推回边缘时把速度清掉，避免一直朝外冲
+                Body.setVelocity(body, { x: 0, y: 0 });
+            }
+
+            const el = body.htmlElement;
+            if (!el) return;
+
+            // 2）果冻动画期间：只做减速，不更新 transform（防止和 CSS 动画打架）
+            if (body.isAnimating) {
                 const speed = Vector.magnitude(body.velocity);
-                if (speed > 0.05) {
-                    Body.setVelocity(body, Vector.mult(body.velocity, 0.98));
-                } else if (speed > 0) {
+                // 只在“快停下来的时候”清零，其他时候交给 frictionAir 处理
+                if (speed > 0 && speed < 0.02) {
                     Body.setVelocity(body, { x: 0, y: 0 });
                 }
+                return;
+            }
+
+            // 3）正常状态：同步 DOM 位置
+            el.style.position = 'absolute';
+            el.style.left = `${body.position.x - SHAPE_RADIUS}px`;
+            el.style.top  = `${body.position.y - SHAPE_RADIUS}px`;
+
+            // 数字 6 / 9 不旋转，其它正常旋转
+            if (body.htmlContent === '6' || body.htmlContent === '9') {
+                el.style.transform = 'rotate(0deg)';
+            } else {
+                el.style.transform = `rotate(${body.angle}rad)`;
+            }
+
+            // 4）摩擦减速
+            const speed = Vector.magnitude(body.velocity);
+            if (speed > 0.05) {
+                Body.setVelocity(body, Vector.mult(body.velocity, 0.98));
+            } else if (speed > 0) {
+                Body.setVelocity(body, { x: 0, y: 0 });
             }
         });
     });
@@ -298,7 +476,7 @@ function processFusion(animatedBody, removedBody) {
     }
     
     // 1. 触发烟花效果 (此函数内部会播放音效 3)
-    createFirework(removedBody.position.x, removedBody.position.y);
+    createFirework(animatedBody.position.x, animatedBody.position.y);
     
     // 2. 立即从 DOM 移除消失体
     removedBody.htmlElement.remove();
@@ -334,7 +512,7 @@ function processFusion(animatedBody, removedBody) {
         animatedBody.isProcessing = false; 
         
         // 补充生成一个新元素
-        const newContent = currentContentList[getRandom(0, currentContentList.length - 1)];
+        const newContent = getRandomContentForNewShape();
         const newColor = COLORS[getRandom(0, COLORS.length - 1)];
         createPhysicsShape(newContent, newColor);
         
@@ -406,7 +584,7 @@ function setCategory(category) {
     const itemsToGenerate = 5; 
 
     const interval = setInterval(() => {
-        const content = currentContentList[getRandom(0, currentContentList.length - 1)];
+        const content = getRandomContentForNewShape();
         const color = COLORS[getRandom(0, COLORS.length - 1)];
 
         createPhysicsShape(content, color);
@@ -418,6 +596,58 @@ function setCategory(category) {
     }, 200);
 }
 
+/**
+ * 处理“连续点击两个相同内容泡泡”的逻辑
+ * @param {Body} body 本次点击到的泡泡
+ */
+function handleTapSelection(body) {
+    const now = Date.now();
+
+    // 同一个泡泡被狂点：只更新时间，不触发合成
+    if (lastSelectedBody === body) {
+        lastSelectedTime = now;
+        return;
+    }
+
+    const hasPrev = !!lastSelectedBody;
+    const inTime = now - lastSelectedTime <= TAP_COMBINE_INTERVAL;
+    const sameContent =
+        hasPrev &&
+        lastSelectedBody.htmlContent === body.htmlContent;
+
+    if (
+        hasPrev &&
+        inTime &&
+        sameContent &&
+        !lastSelectedBody.isProcessing &&
+        !body.isProcessing
+    ) {
+        // ✅ 满足条件：两次连续点击到不同的、相同内容的泡泡 → 视为碰撞合成
+
+        const bodyA = lastSelectedBody;
+        const bodyB = body;
+
+        bodyA.isProcessing = true;
+        bodyB.isProcessing = true;
+
+        showToast(`👏 连续点中两个 ${body.htmlContent} ！`);
+
+        // 规则：让“第二次点击”的泡泡做果冻动画，第一次的消失
+        const animatedBody = bodyB;
+        const removedBody = bodyA;
+
+        setTimeout(() => processFusion(animatedBody, removedBody), 50);
+
+        // 用完这对后清空记录，避免重复使用同一对
+        lastSelectedBody = null;
+        lastSelectedTime = 0;
+    } else {
+        // 不满足合成条件：只更新“上一次选择”的记录
+        lastSelectedBody = body;
+        lastSelectedTime = now;
+    }
+}
+
 function playRandomSound(soundList) {
     if (soundList.length === 0) return;
 
@@ -427,13 +657,40 @@ function playRandomSound(soundList) {
     playSound(sound);
 }
 
+function playRandomBgm() {
+    // 停掉上一个 BGM（如果有）
+    if (currentBgm) {
+        currentBgm.pause();
+        currentBgm.currentTime = 0;
+    }
+
+    // 随机挑一个背景音乐
+    const index = Math.floor(Math.random() * bgmList.length);
+    currentBgm = bgmList[index];
+
+    currentBgm.volume = 1; // 可调：背景音乐音量
+    currentBgm.play().catch(() => {});
+
+    // ⭐ 当 BGM 播放结束，自动随机播放下一首
+    currentBgm.onended = () => {
+        playRandomBgm();  // 递归式循环
+    };
+}
+
+function startBgmOnce() {
+    if (!bgmStarted) {
+        bgmStarted = true;
+        playRandomBgm();
+    }
+}
+
 document.getElementById('numbers-btn').onclick = () => setCategory('numbers');
 document.getElementById('letters-btn').onclick = () => setCategory('letters');
 document.getElementById('animals-btn').onclick = () => setCategory('animals');
 document.getElementById('fruits-btn').onclick = () => setCategory('fruits');
 
 document.getElementById('add-random-btn').onclick = () => {
-    const content = currentContentList[getRandom(0, currentContentList.length - 1)];
+    const content = getRandomContentForNewShape();
     const color = COLORS[getRandom(0, COLORS.length - 1)];
     createPhysicsShape(content, color);
 };
@@ -442,6 +699,10 @@ document.getElementById('add-random-btn').onclick = () => {
 // 初始化
 window.onload = () => {
     initSounds(); // 【新增】初始化音效
+    initFireworkCanvas(); // 初始化烟花 Canvas
     initMatter();
     setCategory('numbers'); 
+    // 必须在第一次用户点击后播放
+    window.addEventListener('touchstart', startBgmOnce, { once: true });
+    window.addEventListener('mousedown', startBgmOnce, { once: true });
 };
